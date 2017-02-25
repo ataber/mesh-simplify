@@ -30,7 +30,15 @@
     "url": "git://github.com/ataber/mesh-simplify.git"
   },
   "keywords": [
-    "ecosystem:stackgl"
+    "ecosystem:stackgl",
+    "mesh",
+    "simplify",
+    "decimate",
+    "decimation",
+    "quadric",
+    "error",
+    "surface",
+    "simplification"
   ],
   "homepage": "https://github.com/ataber/mesh-simplify",
   "bugs": {

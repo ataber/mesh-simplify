@@ -1,7 +1,7 @@
 var bunny = require('bunny')
 var meshSimplify = require('./index')
 
-var simplified = meshSimplify(bunny.positions, bunny.cells, null, 0)()
+var simplified = meshSimplify(bunny.positions, bunny.cells, null, 0)(2000)
 var norms = require('normals').vertexNormals(simplified.cells, simplified.positions)
 var shell = require("mesh-viewer")()
 
