@@ -6,7 +6,6 @@ var normals = require('normals').faceNormals
 var ops = require('ndarray-ops')
 var solve = require('ndarray-linear-solve')
 var removeOrphans = require('remove-orphan-vertices')
-var orientation = require('robust-orientation')
 
 module.exports = function(positions, cells, faceNormals, threshold) {
   if (!threshold) {
@@ -14,7 +13,7 @@ module.exports = function(positions, cells, faceNormals, threshold) {
   }
 
   if (!faceNormals) {
-    faceNormals = normals(cells, positions)
+    faceNormals = normals(cells, positions);
   }
 
   var n = positions.length;
@@ -25,7 +24,7 @@ module.exports = function(positions, cells, faceNormals, threshold) {
       pairs: [],
       error: null
     }
-  })
+  });
 
   cells.map(function(cell) {
     for (var i = 0; i < 2; i++) {
@@ -39,7 +38,7 @@ module.exports = function(positions, cells, faceNormals, threshold) {
         vertices[v2].pairs.push(v1);
       }
     }
-  })
+  });
 
   if (threshold > 0) {
     for (var i = 0; i < n; i++) {
@@ -59,7 +58,7 @@ module.exports = function(positions, cells, faceNormals, threshold) {
     var normal = faceNormals[cellId];
     // [a, b, c, d] where plane is defined by a*x+by+cz+d=0
     // choose the first vertex WLOG
-    var pointOnTri = positions[cells[cellId][0]];
+    var pointOnTri = positions[cell[0]];
     var plane = [normal[0], normal[1], normal[2], -vec3.dot(normal, pointOnTri)];
 
     cell.map(function(vertexId) {
@@ -105,9 +104,9 @@ module.exports = function(positions, cells, faceNormals, threshold) {
     var solved = solve(optimal, toInvert, ndarray([0, 0, 0, 1]));
 
     if (!solved) {
-      var v1Homogenous = v1.position;
+      var v1Homogenous = Array.from(v1.position);
       v1Homogenous.push(1);
-      var v2Homogenous = v2.position;
+      var v2Homogenous = Array.from(v2.position);
       v2Homogenous.push(1);
       var midpoint = vec3.add(new Array(3), v1.position, v2.position);
       vec3.scale(midpoint, midpoint, 0.5);
@@ -137,12 +136,12 @@ module.exports = function(positions, cells, faceNormals, threshold) {
 
   var edges = []
   vertices.map(function(v1) {
-    v1.pairs.map(function(index) {
-      var v2 = vertices[index];
+    v1.pairs.map(function(v2Index) {
+      var v2 = vertices[v2Index];
       var optimal = optimalPosition(v1, v2);
 
       var edge = {
-        pair: [v1.index, index],
+        pair: [v1.index, v2Index],
         cost: optimal.error,
         optimalPosition: optimal.vertex
       };
@@ -155,18 +154,14 @@ module.exports = function(positions, cells, faceNormals, threshold) {
 
   return function(targetCount) {
     var n = positions.length;
-    var newVertices = Array.from(vertices);
     var newCells = Array.from(cells);
     var deletedCount = 0;
-    if (!targetCount) {
-      targetCount = n - 200;
-    }
 
     while (n - deletedCount > targetCount) {
       var leastCost = costs.pop();
       var i1 = leastCost.pair[0];
       var i2 = leastCost.pair[1];
-      newVertices[i1].position = leastCost.optimalPosition;
+      vertices[i1].position = leastCost.optimalPosition;
 
       for (var i = newCells.length - 1; i >= 0; i--) {
         var cell = newCells[i];
@@ -180,32 +175,31 @@ module.exports = function(positions, cells, faceNormals, threshold) {
         }
       }
 
-      var v1 = newVertices[i1];
-      var v2 = newVertices[i2];
+      var v1 = vertices[i1];
+      var v2 = vertices[i2];
       edges.map(function(edge) {
-        if (edge.pair.sort() == [i1, i2]) {
+        if (edge.pair[0] == i1 && edge.pair[1] == i2) {
           return
         }
 
         if (edge.pair.indexOf(i1) != -1) {
-          var optimal = optimalPosition(v1, newVertices[edge.pair[1]]);
+          var optimal = optimalPosition(v1, vertices[edge.pair[1]]);
           edge.optimalPosition = optimal.vertex;
           edge.cost = optimal.error;
-          costs.updateItem(edge);
         }
 
         if (edge.pair.indexOf(i2) != -1) {
           // use v1 as that is the new position of v2
-          var optimal = optimalPosition(v1, newVertices[(edge.pair.indexOf(i2) + 1) % 2]);
+          var optimal = optimalPosition(v1, vertices[(edge.pair.indexOf(i2) + 1) % 2]);
           edge.optimalPosition = optimal.vertex;
           edge.cost = optimal.error;
-          costs.updateItem(edge);
         }
       });
 
+      costs.heapify()
       deletedCount++;
     }
 
-    return removeOrphans(newCells, newVertices.map(p => p.position));
+    return removeOrphans(newCells, vertices.map(p => p.position));
   };
 }
