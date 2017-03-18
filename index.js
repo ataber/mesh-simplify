@@ -161,6 +161,10 @@ module.exports = function(positions, cells, faceNormals, threshold) {
       var leastCost = costs.pop();
       var i1 = leastCost.pair[0];
       var i2 = leastCost.pair[1];
+      if (i1 == i2) {
+        // edge has already been collapsed
+        continue;
+      }
       vertices[i1].position = leastCost.optimalPosition;
 
       for (var i = newCells.length - 1; i >= 0; i--) {
@@ -176,14 +180,14 @@ module.exports = function(positions, cells, faceNormals, threshold) {
       }
 
       var v1 = vertices[i1];
-      var v2 = vertices[i2];
       edges.map(function(edge) {
-        if (edge.pair[0] == i1 && edge.pair[1] == i2) {
-          return
+        if (edge.pair.indexOf(i1) != -1 && edge.pair.indexOf(i2) != -1) {
+          edge.pair[edge.pair.indexOf(i2)] = i1;
+          return;
         }
 
         if (edge.pair.indexOf(i1) != -1) {
-          var optimal = optimalPosition(v1, vertices[edge.pair[1]]);
+          var optimal = optimalPosition(v1, vertices[(edge.pair.indexOf(i2) + 1) % 2]);
           edge.optimalPosition = optimal.vertex;
           edge.cost = optimal.error;
         }
@@ -191,12 +195,13 @@ module.exports = function(positions, cells, faceNormals, threshold) {
         if (edge.pair.indexOf(i2) != -1) {
           // use v1 as that is the new position of v2
           var optimal = optimalPosition(v1, vertices[(edge.pair.indexOf(i2) + 1) % 2]);
+          edge.pair[edge.pair.indexOf(i2)] = i1;
           edge.optimalPosition = optimal.vertex;
           edge.cost = optimal.error;
         }
       });
 
-      costs.heapify()
+      costs.heapify();
       deletedCount++;
     }
 
