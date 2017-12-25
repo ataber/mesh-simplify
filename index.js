@@ -180,22 +180,25 @@ module.exports = function(positions, cells, faceNormals, threshold) {
       }
 
       var v1 = vertices[i1];
-      edges.map(function(edge) {
-        if (edge.pair.indexOf(i1) != -1 && edge.pair.indexOf(i2) != -1) {
-          edge.pair[edge.pair.indexOf(i2)] = i1;
+      edges.map(function(edge, i) {
+        var edgeIndex1 = edge.pair.indexOf(i1);
+        var edgeIndex2 = edge.pair.indexOf(i2);
+
+        if (edgeIndex1 != -1 && edgeIndex2 != -1) {
+          edge.pair[edgeIndex2] = i1;
           return;
         }
 
         if (edge.pair.indexOf(i1) != -1) {
-          var optimal = optimalPosition(v1, vertices[(edge.pair.indexOf(i2) + 1) % 2]);
+          var optimal = optimalPosition(v1, vertices[edge.pair[(edgeIndex1 + 1) % 2]]);
           edge.optimalPosition = optimal.vertex;
           edge.cost = optimal.error;
         }
 
         if (edge.pair.indexOf(i2) != -1) {
           // use v1 as that is the new position of v2
-          var optimal = optimalPosition(v1, vertices[(edge.pair.indexOf(i2) + 1) % 2]);
-          edge.pair[edge.pair.indexOf(i2)] = i1;
+          var optimal = optimalPosition(v1, vertices[edge.pair[(edgeIndex2 + 1) % 2]]);
+          edge.pair[edgeIndex2] = i1;
           edge.optimalPosition = optimal.vertex;
           edge.cost = optimal.error;
         }
