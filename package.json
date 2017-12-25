@@ -19,6 +19,7 @@
     "ndarray-linear-solve": "^3.0.0",
     "ndarray-ops": "^1.2.2",
     "normals": "^1.1.0",
+    "remove-degenerate-cells": "^1.0.0",
     "remove-orphan-vertices": "^1.0.0"
   },
   "devDependencies": {

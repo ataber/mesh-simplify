@@ -11,7 +11,7 @@ Surface Simplification via Quadric Error Metrics. An implementation of [this pap
 ```javascript
 var bunny          = require('bunny')
 var meshSimplify   = require('mesh-simplify')
-var simplified     = meshSimplify(bunny.positions, bunny.cells, null, 0)(1000);
+var simplified     = meshSimplify(bunny.cells, bunny.positions)(1000);
 console.log(simplified.positions.length) # <- 1000
 ```
 

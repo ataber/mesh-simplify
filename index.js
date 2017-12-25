@@ -1,16 +1,62 @@
-var Heap = require('heap')
-var ndarray = require('ndarray')
-var vec3 = require('gl-vec3')
-var vec4 = require('gl-vec4')
-var normals = require('normals').faceNormals
-var ops = require('ndarray-ops')
-var solve = require('ndarray-linear-solve')
-var removeOrphans = require('remove-orphan-vertices')
+var Heap = require('heap');
+var ndarray = require('ndarray');
+var vec3 = require('gl-vec3');
+var vec4 = require('gl-vec4');
+var normals = require('normals').faceNormals;
+var ops = require('ndarray-ops');
+var solve = require('ndarray-linear-solve');
+var removeOrphans = require('remove-orphan-vertices');
+var removeDegenerates = require('remove-degenerate-cells');
 
-module.exports = function(positions, cells, faceNormals, threshold) {
-  if (!threshold) {
-    threshold = 0;
+function vertexError(vertex, quadratic) {
+  var xformed = new Array(4);
+  vec4.transformMat4(xformed, vertex, quadratic);
+  return vec4.dot(vertex, xformed);
+};
+
+function optimalPosition(v1, v2) {
+  var q1 = v1.error;
+  var q2 = v2.error;
+  var costMatrix = ndarray(new Float32Array(4 * 4), [4, 4]);
+  ops.add(costMatrix, q1, q2);
+  var mat4Cost = Array.from(costMatrix.data);
+  var optimal = ndarray(new Float32Array(4));
+  var toInvert = costMatrix;
+  toInvert.set(0, 3, 0);
+  toInvert.set(1, 3, 0);
+  toInvert.set(2, 3, 0);
+  toInvert.set(3, 3, 1);
+  var solved = solve(optimal, toInvert, ndarray([0, 0, 0, 1]));
+
+  if (!solved) {
+    var v1Homogenous = Array.from(v1.position);
+    v1Homogenous.push(1);
+    var v2Homogenous = Array.from(v2.position);
+    v2Homogenous.push(1);
+    var midpoint = vec3.add(new Array(3), v1.position, v2.position);
+    vec3.scale(midpoint, midpoint, 0.5);
+    midpoint.push(1);
+    var v1Error = vertexError(v1Homogenous, mat4Cost);
+    var v2Error = vertexError(v2Homogenous, mat4Cost);
+    var midpointError = vertexError(midpoint, mat4Cost);
+    var minimum = Math.min([v1Error, v2Error, midpointError]);
+    if (v1Error == minimum) {
+      optimal = v1Homogenous;
+    } else if (v2Error == minimum) {
+      optimal = v2Homogenous;
+    } else {
+      optimal = midpoint;
+    }
+  } else {
+    optimal = optimal.data;
   }
+
+  var error = vertexError(optimal, mat4Cost);
+  return {vertex: optimal.slice(0, 3), error: error};
+};
+
+module.exports = function(cells, positions, faceNormals, threshold = 0) {
+  cells = removeDegenerates(cells);
 
   if (!faceNormals) {
     faceNormals = normals(cells, positions);
@@ -22,7 +68,7 @@ module.exports = function(positions, cells, faceNormals, threshold) {
       position: p,
       index: i,
       pairs: [],
-      error: null
+      error: ndarray(new Float32Array(4 * 4).fill(0), [4, 4])
     }
   });
 
@@ -73,62 +119,10 @@ module.exports = function(positions, cells, faceNormals, threshold) {
         }
       }
 
-      if (vertices[vertexId].error) {
-        var existingQuadric = vertices[vertexId].error;
-        ops.add(existingQuadric, existingQuadric, errorQuadric);
-        vertices[vertexId].error = existingQuadric;
-      } else {
-        vertices[vertexId].error = errorQuadric;
-      }
+      var existingQuadric = vertices[vertexId].error;
+      ops.add(existingQuadric, existingQuadric, errorQuadric);
     })
   });
-
-  function vertexError(vertex, quadratic) {
-    var xformed = new Array(4);
-    vec4.transformMat4(xformed, vertex, quadratic);
-    return vec4.dot(vertex, xformed);
-  };
-
-  function optimalPosition(v1, v2) {
-    var q1 = v1.error;
-    var q2 = v2.error;
-    var costMatrix = ndarray(new Float32Array(4 * 4), [4, 4]);
-    ops.add(costMatrix, q1, q2);
-    var mat4Cost = Array.from(costMatrix.data);
-    var optimal = ndarray(new Float32Array(4));
-    var toInvert = costMatrix;
-    toInvert.set(0, 3, 0);
-    toInvert.set(1, 3, 0);
-    toInvert.set(2, 3, 0);
-    toInvert.set(3, 3, 1);
-    var solved = solve(optimal, toInvert, ndarray([0, 0, 0, 1]));
-
-    if (!solved) {
-      var v1Homogenous = Array.from(v1.position);
-      v1Homogenous.push(1);
-      var v2Homogenous = Array.from(v2.position);
-      v2Homogenous.push(1);
-      var midpoint = vec3.add(new Array(3), v1.position, v2.position);
-      vec3.scale(midpoint, midpoint, 0.5);
-      midpoint.push(1);
-      var v1Error = vertexError(v1Homogenous, mat4Cost);
-      var v2Error = vertexError(v2Homogenous, mat4Cost);
-      var midpointError = vertexError(midpoint, mat4Cost);
-      var minimum = Math.min([v1Error, v2Error, midpointError]);
-      if (v1Error == minimum) {
-        optimal = v1Homogenous;
-      } else if (v2Error == minimum) {
-        optimal = v2Homogenous;
-      } else {
-        optimal = midpoint;
-      }
-    } else {
-      optimal = optimal.data;
-    }
-
-    var error = vertexError(optimal, mat4Cost);
-    return {vertex: optimal.slice(0, 3), error: error};
-  };
 
   var costs = new Heap(function(a, b) {
     return a.cost - b.cost;
@@ -152,9 +146,10 @@ module.exports = function(positions, cells, faceNormals, threshold) {
     });
   });
 
+  var n = positions.length;
   return function(targetCount) {
-    var n = positions.length;
-    var newCells = Array.from(cells);
+    // deep-copy trick: https://stackoverflow.com/questions/597588/how-do-you-clone-an-array-of-objects-in-javascript
+    var newCells = JSON.parse(JSON.stringify(cells));
     var deletedCount = 0;
 
     while (n - deletedCount > targetCount) {
@@ -169,13 +164,14 @@ module.exports = function(positions, cells, faceNormals, threshold) {
 
       for (var i = newCells.length - 1; i >= 0; i--) {
         var cell = newCells[i];
-        if (cell.indexOf(i2) != -1) {
+        var cellIndex2 = cell.indexOf(i2);
+        if (cellIndex2 != -1) {
           if (cell.indexOf(i1) != -1) {
             // Delete cells with zero area, as v1 == v2 now
             newCells.splice(i, 1);
           }
 
-          cell[cell.indexOf(i2)] = i1;
+          cell[cellIndex2] = i1;
         }
       }
 
@@ -208,6 +204,8 @@ module.exports = function(positions, cells, faceNormals, threshold) {
       deletedCount++;
     }
 
-    return removeOrphans(newCells, vertices.map(p => p.position));
+    return removeOrphans(newCells, vertices.map(function(p) {
+      return p.position
+    }));
   };
 }
